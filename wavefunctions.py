@@ -1,22 +1,26 @@
 # -*- coding: utf-8 -*-
 """
-wavefunctions.py — overlay |ψ|² with clean, closed contour lines for AA / AB / BA
-and domain walls derived from a smooth registry “mass” field. No shapely or skimage.
+wavefunctions.py — clean overlays for |ψ|² with AA/AB/BA/Walls as thin CLOSED lines.
 
-Exports:
-  • save_wavefunctions_npz(...)
-  • save_wavefunction_overlay_png_clean(npz_path, state, a1_b, a2_b, ...)
+Exports
+-------
+save_wavefunctions_npz
+save_wavefunction_overlay_registry_png_clean
+save_wavefunction_3d_surface_html_clean   (3D surface + line contours)
 """
 
 import os
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
-from scipy.ndimage import gaussian_filter, sobel
-from scipy.spatial import cKDTree
+import plotly.graph_objects as go
+from scipy.ndimage import gaussian_filter
 
+from .registry import (
+    get_registry_grid, region_masks_from_phi, psi_region_fractions, contour_paths
+)
 
-# ------------------- core save -------------------
+# ---------------- save eigenstates ----------------
 def save_wavefunctions_npz(tag, n_mult, XY_all, N1, E, V, save_dir, sel_idx=None, max_states=12):
     os.makedirs(save_dir, exist_ok=True)
     M = V.shape[1]
@@ -26,141 +30,128 @@ def save_wavefunctions_npz(tag, n_mult, XY_all, N1, E, V, save_dir, sel_idx=None
         center = 0.5 * (E.min() + E.max())
         sel_idx = np.argsort(np.abs(E - center))[:min(max_states, M)]
     sel_idx = np.asarray(sel_idx, dtype=int)
-    out = {
-        "XY": np.asarray(XY_all, dtype=np.float64),
-        "N1": np.int64(N1),
-        "E":  np.asarray(E[sel_idx], dtype=np.float64),
-        "P":  np.abs(V[:, sel_idx])**2
-    }
+    out = {"XY": np.asarray(XY_all, float),
+           "N1": int(N1),
+           "E":  np.asarray(E[sel_idx], float),
+           "P":  np.abs(V[:, sel_idx])**2}
     fpath = os.path.join(save_dir, f"wfmaps_{tag}_n{n_mult:02d}.npz")
     np.savez_compressed(fpath, **out)
     print(f"[saved wfmaps] {fpath}  (states saved: {len(sel_idx)})")
     return fpath
 
-
-# ------------------- registry field helpers -------------------
-def _reciprocal_vectors(a1, a2):
-    A = np.column_stack([a1, a2])
-    B = 2 * np.pi * np.linalg.inv(A.T)
-    return B[:, 0], B[:, 1]
-
-def _G_star_three(b1, b2):
-    return np.stack([b1, b2, -(b1 + b2)], axis=0)
-
-def _wrap_to_cell(delta, a1, a2):
-    A = np.column_stack([a1, a2])
-    uv = np.linalg.solve(A, delta)
-    uv -= np.round(uv)
-    return A @ uv
-
-def _nearest_top_displacements(XY_bottom, XY_top, a1_b, a2_b):
-    idx = cKDTree(XY_top).query(XY_bottom, k=1)[1]
-    raw = XY_top[idx] - XY_bottom
-    wrapped = np.array([_wrap_to_cell(d, a1_b, a2_b) for d in raw])
-    return wrapped
-
-def _mass_phase_proxy(XY_bottom, XY_top, a1_b, a2_b):
-    """Return smooth mass-like field m_b at bottom-layer sites from local registry."""
-    deltas = _nearest_top_displacements(XY_bottom, XY_top, a1_b, a2_b)
-    b1, b2 = _reciprocal_vectors(a1_b, a2_b)
-    Gs = _G_star_three(b1, b2)
-    dots = deltas @ Gs.T           # (N,3)
-    m_site = np.cos(dots).sum(axis=1)  # (N,)
-    return m_site
-
-def _rasterize_scalar_points(XY, values, dx):
+# ---------------- utilities ----------------
+def _rasterize_weighted(XY, weights, xg, yg):
     x, y = XY[:, 0], XY[:, 1]
-    xmin, xmax = x.min() - dx, x.max() + dx
-    ymin, ymax = y.min() - dx, y.max() + dx
-    Nx = max(64, int(np.ceil((xmax - xmin) / dx)))
-    Ny = max(64, int(np.ceil((ymax - ymin) / dx)))
-    xedges = np.linspace(xmin, xmax, Nx + 1)
-    yedges = np.linspace(ymin, ymax, Ny + 1)
-    Hsum, _, _ = np.histogram2d(y, x, bins=[yedges, xedges], weights=values)
-    Hcnt, _, _ = np.histogram2d(y, x, bins=[yedges, xedges])
-    xg = 0.5 * (xedges[:-1] + xedges[1:])
-    yg = 0.5 * (yedges[:-1] + yedges[1:])
-    img = np.divide(Hsum, Hcnt, out=np.zeros_like(Hsum), where=(Hcnt > 0))
-    return img, xg, yg
+    Nx, Ny = len(xg), len(yg)
+    xedges = np.linspace(xg[0], xg[-1], Nx + 1)
+    yedges = np.linspace(yg[0], yg[-1], Ny + 1)
+    Zsum, _, _ = np.histogram2d(y, x, bins=[yedges, xedges], weights=weights)
+    C, _, _    = np.histogram2d(y, x, bins=[yedges, xedges])
+    Z = np.divide(Zsum, C, out=np.full_like(Zsum, np.nan), where=(C > 0))
+    return Z
 
-
-# ------------------- overlay plot -------------------
-def save_wavefunction_overlay_png_clean(npz_path, state, a1_b, a2_b,
-                                        dx_mass=1.2, smooth_sigma=1.2,
-                                        dot_size=6, cmap="viridis",
-                                        out_png=None):
+# ---------------- 2D overlay: CLEAN ----------------
+def save_wavefunction_overlay_registry_png_clean(
+    XY_all, N1, Elist, P2_all, a1_b, a2_b, state=0,
+    dx_reg=1.0, aa_frac=0.80, wall_q=0.85, m_sign_thr=0.20,
+    out_png=None, layer="total"
+):
     """
-    Plot |ψ|² and overlay *closed contour lines* for AA / AB / BA regions
-    and domain walls derived from a smooth registry “mass” field.
-    No point clouds or grids are drawn for overlays.
+    Plot |ψ|² as a heatmap (binned) and overlay CLOSED contour lines for
+    AA (red), AB (blue), BA (green), Walls (cyan). No filled dots.
+    Also prints & returns region fractions.
     """
-    data = np.load(npz_path)
-    XY  = data["XY"]
-    N1  = int(data["N1"])
-    E   = data["E"]
-    P   = data["P"][:, state]
+    # 1) registry grid and masks
+    mag_img, phs_img, wall_mask, xg, yg, valid = get_registry_grid(XY_all, N1, a1_b, a2_b, dx_reg=dx_reg)
+    aa, ab, ba, walls = region_masks_from_phi(mag_img, phs_img, wall_mask, valid,
+                                              aa_frac=aa_frac, m_sign_thr=m_sign_thr)
+    masks = (aa, ab, ba, walls, xg, yg, valid)
 
-    XYb, XYt = XY[:N1], XY[N1:]
-    Pb,  Pt  = P[:N1],  P[N1:]
+    # 2) choose layer + rasterize |ψ|² on same grid
+    P2 = P2_all[:, state]
+    if layer == "bottom":
+        XY, P2s = XY_all[:N1], P2[:N1]
+    elif layer == "top":
+        XY, P2s = XY_all[N1:], P2[N1:]
+    else:
+        XY, P2s = XY_all, P2
 
-    # ---- ψ² heatmap first (below everything) ----
-    fig, ax = plt.subplots(figsize=(7.2, 6.6))
-    vmin = max(P.min() + 1e-18, 1e-10)
-    vmax = P.max()
-    sc1 = ax.scatter(XYb[:, 0], XYb[:, 1], c=Pb, s=dot_size, cmap=cmap,
-                     norm=LogNorm(vmin=vmin, vmax=vmax), edgecolors="none", zorder=1)
-    ax.scatter(XYt[:, 0], XYt[:, 1], c=Pt, s=dot_size, cmap=cmap,
-               norm=sc1.norm, edgecolors="none", alpha=0.85, zorder=1.05)
+    Z = _rasterize_weighted(XY, P2s, xg, yg)
+    Zs = gaussian_filter(np.nan_to_num(Z, nan=0.0), sigma=1.0, mode="nearest")
+    Zs[~valid] = np.nan
 
-    cbar = fig.colorbar(sc1, ax=ax, pad=0.02)
-    cbar.set_label(r"$|\psi|^2$")
-    ax.set_aspect("equal")
-    ax.set_xlabel("x (Å)")
-    ax.set_ylabel("y (Å)")
-    ax.set_title(rf"$|\psi|^2$ map  (E/t = {E[state]:.6f})")
+    # 3) plot
+    fig, ax = plt.subplots(figsize=(7.3, 7))
+    vmin = max(np.nanmin(Zs[np.isfinite(Zs)]) * 0.8, 1e-10)
+    vmax = np.nanmax(Zs) if np.isfinite(np.nanmax(Zs)) else 1.0
+    im = ax.pcolormesh(xg, yg, Zs, shading="auto",
+                       norm=LogNorm(vmin=vmin, vmax=max(vmax, vmin*10)),
+                       cmap="viridis")
 
-    # ---- build mass proxy on a regular grid from bottom-layer registry ----
-    m_site = _mass_phase_proxy(XYb, XYt, a1_b, a2_b)
-    m_img, xg, yg = _rasterize_scalar_points(XYb, m_site, dx_mass)
+    # closed lines only
+    for mask, color, label in [(aa, '#e41a1c', 'AA'),
+                               (ab, '#377eb8', 'AB'),
+                               (ba, '#4daf4a', 'BA'),
+                               (walls, '#00cfd0', 'Walls (m≈0)')]:
+        paths = contour_paths(mask, xg, yg)
+        for k, pts in enumerate(paths):
+            show = (k == 0)
+            ax.plot(pts[:, 0], pts[:, 1], color=color, lw=1.3, label=(label if show else None))
 
-    # smooth & gradient
-    if smooth_sigma and smooth_sigma > 0:
-        m_img = gaussian_filter(m_img, smooth_sigma / max(dx_mass, 1e-6), mode="nearest")
-    grad = np.hypot(sobel(m_img, axis=0), sobel(m_img, axis=1))
+    ax.set_aspect("equal", adjustable="box")
+    ax.set_xlabel("x (Å)"); ax.set_ylabel("y (Å)")
+    ax.set_title(f"|ψ|² map  (E/t = {Elist[state]:.6f})")
+    cbar = fig.colorbar(im, ax=ax, pad=0.02)
+    cbar.set_label("|ψ|²")
 
-    mmax = np.nanmax(np.abs(m_img)) + 1e-12
-
-    # choose levels → AA = high +, AB/BA = high -, walls = grad high
-    levels_AA = [0.80 * mmax]
-    levels_AB = [-0.60 * mmax]
-    levels_BA = [-0.60 * mmax]   # same isocontour; we just style it differently
-    level_wall = [np.nanpercentile(grad, 85.0)]
-
-    # ---- overlay only lines (no filled regions, no points) ----
-    ax.contour(xg, yg, m_img, levels=levels_AA, colors='#e41a1c',
-               linewidths=1.6, zorder=3, alpha=0.95)  # AA
-    ax.contour(xg, yg, m_img, levels=levels_AB, colors='#377eb8',
-               linewidths=1.2, zorder=3, alpha=0.95)  # AB
-    ax.contour(xg, yg, -m_img, levels=[0.60 * mmax], colors='#4daf4a',
-               linewidths=1.2, zorder=3, alpha=0.95)  # BA (mirror)
-    ax.contour(xg, yg, grad,  levels=level_wall, colors='#00bcd4',
-               linewidths=1.0, zorder=3, alpha=0.9)   # Walls
-
-    # Legend with proxy lines (no scatter entries)
-    from matplotlib.lines import Line2D
-    legend_lines = [
-        Line2D([0], [0], color='#e41a1c', lw=1.6, label='AA'),
-        Line2D([0], [0], color='#377eb8', lw=1.2, label='AB'),
-        Line2D([0], [0], color='#4daf4a', lw=1.2, label='BA'),
-        Line2D([0], [0], color='#00bcd4', lw=1.0, label='Walls (m≈0)'),
-    ]
-    ax.legend(handles=legend_lines, frameon=False, loc='upper left', fontsize=9)
-
+    ax.legend(frameon=False, loc="upper left")
     plt.tight_layout()
+
     if out_png is None:
-        base = npz_path.rsplit(".", 1)[0]
-        out_png = f"{base}_state{state:02d}_registry_overlay.png"
+        out_png = "wf_overlay_registry.png"
     plt.savefig(out_png, dpi=220)
     plt.close(fig)
-    print(f"[saved registry overlay] {out_png}")
-    return out_png
+    print(f"[saved overlay PNG] {out_png}")
+
+    # 4) fractions
+    fracs = psi_region_fractions(P2, XY_all, N1, dx_reg, masks, layer="total")
+    print("[region fractions]", ", ".join(f"{k}={v:.3f}" for k, v in fracs.items()))
+    return out_png, fracs, (aa, ab, ba, walls, xg, yg, valid)
+
+# ---------------- 3D surface + line contours ----------------
+def save_wavefunction_3d_surface_html_clean(
+    XY_all, N1, Elist, P2_all, masks_tuple, state=0, out_html=None
+):
+    aa, ab, ba, walls, xg, yg, valid = masks_tuple
+    P2 = P2_all[:, state]
+
+    # bin to grid used by registry
+    Z = _rasterize_weighted(XY_all, P2, xg, yg)
+    Z[~valid] = np.nan
+    X, Y = np.meshgrid(xg, yg)
+
+    fig = go.Figure(go.Surface(x=X, y=Y, z=Z, colorscale="Viridis",
+                               colorbar=dict(title="|ψ|²"), showscale=True))
+    fig.update_layout(scene=dict(aspectmode="data"),
+                      margin=dict(l=0, r=0, b=0, t=40),
+                      title=f"|ψ|² surface (state #{state}, E/t={Elist[state]:.6f})")
+
+    def add_contours(mask, color, name):
+        paths = contour_paths(mask, xg, yg)
+        for k, pts in enumerate(paths):
+            fig.add_trace(go.Scatter3d(
+                x=pts[:, 0], y=pts[:, 1], z=np.full(len(pts), np.nanmax(Z)*1.02),
+                mode='lines', line=dict(color=color, width=4), name=(name if k == 0 else None),
+                showlegend=(k == 0)
+            ))
+
+    add_contours(aa,    '#e41a1c', 'AA')
+    add_contours(ab,    '#377eb8', 'AB')
+    add_contours(ba,    '#4daf4a', 'BA')
+    add_contours(walls, '#00cfd0', 'Walls (m≈0)')
+
+    if out_html is None:
+        out_html = "wf_surface_registry.html"
+    fig.write_html(out_html, include_plotlyjs="cdn", full_html=True)
+    print(f"[saved 3D surface] {out_html}")
+    return out_html

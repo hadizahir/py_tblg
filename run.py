@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-run.py — main driver. Calls clean registry-overlay plot (2D only).
+run.py — main driver with registry-aware overlays + numeric fractions (per-state sweep).
 """
 
 import os, argparse, numpy as np, pandas as pd
@@ -9,8 +9,12 @@ from .io_utils import load_config_yaml, ensure_dir, save_states_csv
 from .lattices import graphene_primitives, layer_lattices
 from .geometry import moire_vectors_primitive, rhombus_polygon
 from .builders import build_flake_H_sparse
-from .spectra import eigs_in_window_sliced, ipr, edge_mask, edge_weight
-from .wavefunctions import save_wavefunctions_npz, save_wavefunction_overlay_png_clean
+from .spectra import eigs_in_window_sliced, ipr, edge_weight, edge_mask
+from .wavefunctions import (
+    save_wavefunctions_npz,
+    save_wavefunction_overlay_registry_png_clean,
+    save_wavefunction_3d_surface_html_clean,
+)
 
 def main():
     ap = argparse.ArgumentParser()
@@ -22,15 +26,17 @@ def main():
     t_intra = (-1.0 if cfg.tb.E_in_t else -t)
     a1_b, a2_b, A_b, B_b = graphene_primitives(acc)
     T1, T2, U = moire_vectors_primitive(a1_b, a2_b, cfg.build.m, cfg.build.r)
+
     save_dir = ensure_dir(cfg.paths.save_dir)
 
     for hp_range in cfg.build.hp_values:
-        QSIGMA, QPI = (7.42, 3.15) if cfg.tb.interlayer_mode == "baseline" else (3.0, 1.3)
+        QSIGMA, QPI = (7.42, 3.15) if (cfg.tb.interlayer_mode == "baseline") else (3.0, 1.3)
         r_xy_cut = hp_range * acc
-
         tag = f"r{cfg.build.r:02d}_m{cfg.build.m:02d}_theta{cfg.build.theta_target_deg:.2f}_hp{hp_range:.2f}"
-        rows_meta, all_state_frames = [], []
 
+        rows_meta, all_state_frames, frac_rows = [], [], []
+
+        # top lattice
         L1, L2, (a1_t, a2_t, A_t, B_t) = layer_lattices(
             a1_b, a2_b, A_b, B_b, cfg.build.theta_target_deg, cfg.tb.registration
         )
@@ -45,25 +51,22 @@ def main():
                 QSIGMA=QSIGMA, QPI=QPI, E_in_t=cfg.tb.E_in_t
             )
 
-            # trim geometric edges
+            # geometric edge trim
             poly = rhombus_polygon(np.array([0.0, 0.0]), T1, T2, n_mult)
             corners4 = poly[:-1]
             d_edge = 10.5 * acc
-            mb = edge_mask(XY_all[:N1], corners4, d_edge)
-            mt = edge_mask(XY_all[N1:], corners4, d_edge)
-            keep = ~np.r_[mb, mt]
+            mask_b = edge_mask(XY_all[:N1], corners4, d_edge)
+            mask_t = edge_mask(XY_all[N1:], corners4, d_edge)
+            keep = ~np.r_[mask_b, mask_t]
             H = H.tocsr()[keep][:, keep]
             XY_all = XY_all[keep]
-            N1 = int((~mb).sum())
+            N1 = int((~mask_b).sum())
 
-            # eigens
+            # eigs-in-window
             E, V = eigs_in_window_sliced(
-                H,
-                cfg.window.E_window[0], cfg.window.E_window[1],
-                cfg.window.sigmas, cfg.window.k_per_slice,
-                cfg.window.n_states_target
+                H, cfg.window.E_window[0], cfg.window.E_window[1],
+                cfg.window.sigmas, cfg.window.k_per_slice, cfg.window.n_states_target
             )
-
             N_sites = H.shape[0]
             N_in_gap = int(len(E))
             print(f"[n={n_mult}] N_sites={N_sites}, states_in_window={N_in_gap}")
@@ -77,14 +80,43 @@ def main():
                 save_states_csv(fn_n, df)
                 all_state_frames.append(df)
 
-                # save NPZ and make the clean overlay for the first saved state
+                # save minimal NPZ so we can reuse P and E easily
                 npz_path = save_wavefunctions_npz(tag, n_mult, XY_all, N1, E, V, save_dir)
-                if npz_path:
-                    save_wavefunction_overlay_png_clean(
-                        npz_path, state=0, a1_b=a1_b, a2_b=a2_b,
-                        dx_mass=1.2, smooth_sigma=1.2, dot_size=5
+
+                # ---- Per-state sweep: overlays + fractions for every in-window state ----
+                data = np.load(npz_path)
+                XY = data["XY"]; N1np = int(data["N1"])
+                Elist = data["E"]; P = data["P"]
+
+                for s in range(len(Elist)):
+                    base = os.path.splitext(os.path.basename(npz_path))[0]
+                    png_out = os.path.join(save_dir, f"{base}_state{s:02d}_registry_overlay.png")
+
+                    # Clean 2D overlay (lines only) + fractions
+                    png_path, fracs, masks_tuple = save_wavefunction_overlay_registry_png_clean(
+                        XY, N1np, Elist, P, a1_b, a2_b,
+                        state=s,
+                        dx_reg=1.0,        # registry pixel (Å)
+                        aa_frac=0.60,      # AA threshold (fraction of max |Φ|)
+                        wall_q=0.85,       # walls quantile on ∇(phase) — kept for consistency
+                        m_sign_thr=0.20,   # AB/BA split with cos(phase)
+                        out_png=png_out,
+                        layer="total"
                     )
 
+                    frac_rows.append({
+                        "n": n_mult, "state": s,
+                        "E": float(Elist[s]),
+                        "f_AA": fracs["AA"], "f_AB": fracs["AB"],
+                        "f_BA": fracs["BA"], "f_WALL": fracs["WALL"]
+                    })
+
+                    # Optional: 3D surface with same closed contours
+                    save_wavefunction_3d_surface_html_clean(
+                        XY, N1np, Elist, P, masks_tuple, state=s,
+                    )
+
+        # ---- Save meta and fractions ----
         meta = pd.DataFrame(rows_meta, columns=["n", "N_sites", "N_states_in_window"])
         meta_csv = os.path.join(save_dir, f"flakes_meta_{tag}.csv")
         meta.to_csv(meta_csv, index=False)
@@ -96,6 +128,12 @@ def main():
             print(f"[saved] {meta_csv}\n[saved] {states_csv}")
         else:
             print(f"[saved] {meta_csv} (no states csv)")
+
+        if frac_rows:
+            frac_df = pd.DataFrame(frac_rows)
+            frac_csv = os.path.join(save_dir, f"flakes_state_fractions_{tag}.csv")
+            frac_df.to_csv(frac_csv, index=False)
+            print(f"[saved] {frac_csv}")
 
 if __name__ == "__main__":
     main()
