@@ -1,0 +1,21 @@
+tb:
+  acc: 1.42
+  dperp: 3.35
+  t: 2.79
+  tp: 0.35
+  E_in_t: true
+  interlayer_mode: baseline
+  registration: AB
+build:
+  m: 18
+  r: 1
+  theta_target_deg: 1.8
+  hp_values: [0.9]
+  n_list: [1,2,3,4,5, 6, 7]
+window:
+  E_window: [-0.022, -0.006]
+  sigmas: [-0.018, -0.015, -0.011, -0.007]
+  k_per_slice: 30
+  n_states_target: 100
+paths:
+  save_dir: "C:\\Users\\hol1brg\\OneDrive - Bosch Group\\DAILY\\tBLG\\bands"
