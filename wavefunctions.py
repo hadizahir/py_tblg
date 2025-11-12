@@ -77,7 +77,7 @@ def save_wavefunction_overlay_registry_png_clean(
         XY, P2s = XY_all, P2
 
     Z = _rasterize_weighted(XY, P2s, xg, yg)
-    Zs = gaussian_filter(np.nan_to_num(Z, nan=0.0), sigma=1.0, mode="nearest")
+    Zs = gaussian_filter(np.nan_to_num(Z, nan=0.0), sigma=0.3, mode="nearest")
     Zs[~valid] = np.nan
 
     # 3) plot

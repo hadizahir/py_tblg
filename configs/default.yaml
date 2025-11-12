@@ -2,20 +2,27 @@ tb:
   acc: 1.42
   dperp: 3.35
   t: 2.79
-  tp: 0.35
+  tp_1: 0.35
+  tp: 3.0
   E_in_t: true
   interlayer_mode: baseline
   registration: AB
 build:
   m: 18
   r: 1
-  theta_target_deg: 1.8
+  theta_target_deg_commm: 9.4
+
+  theta_target_deg_commm: 9.43000790789643034939017783044080654224
+  theta_target_deg_comm: 1.787948610382325
   hp_values: [0.9]
-  n_list: [1,2,3,4,5, 6, 7]
+  n_list: [1, 2, 3, 4, 5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31]
 window:
-  E_window: [-0.022, -0.006]
-  sigmas: [-0.018, -0.015, -0.011, -0.007]
+  E_window1: [-0.022, -0.006]
+  E_window: [-0.09, -0.05]
+  sigmas1: [-0.018, -0.015, -0.011, -0.007]
+  sigmas: [-0.08, -0.07, -0.06]
+
   k_per_slice: 30
-  n_states_target: 100
+  n_states_target: 200
 paths:
   save_dir: "C:\\Users\\hol1brg\\OneDrive - Bosch Group\\DAILY\\tBLG\\bands"

@@ -16,6 +16,7 @@ def dedup_eigs(E, V, atol=1e-8):
 
 def eigs_slice(H, sigma, k, ncv=None, tol=1e-10, maxiter=None):
     N = H.shape[0]; k_eff = min(k, max(1, N-2))
+
     try:
         if N > 3*k_eff:
             w,v = sla.eigsh(H, k=k_eff, sigma=sigma, which='LM',

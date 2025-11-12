@@ -77,4 +77,5 @@ def build_flake_H_sparse(n_mult, a1_b, a2_b, A_b, B_b, a1_t, a2_t, A_t, B_t,
 
 
     H = ss.coo_matrix((vals, (rows, cols)), shape=(N1+N2, N1+N2)).tocsr()
+
     return H, XY, N1
