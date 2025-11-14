@@ -87,7 +87,7 @@ def main():
                 data = np.load(npz_path)
                 XY = data["XY"]; N1np = int(data["N1"])
                 Elist = data["E"]; P = data["P"]
-
+            if 0:
                 for s in range(len(Elist)):
                     base = os.path.splitext(os.path.basename(npz_path))[0]
                     png_out_top = os.path.join(save_dir, f"{base}_state{s:02d}_E{E[s]:02f}_registry_overlay_top.png")
@@ -125,6 +125,7 @@ def main():
                     save_wavefunction_3d_surface_html_clean(
                         XY, N1np, Elist, P, masks_tuple, state=s,
                     )
+                    
 
         # ---- Save meta and fractions ----
         meta = pd.DataFrame(rows_meta, columns=["n", "N_sites", "N_states_in_window"])

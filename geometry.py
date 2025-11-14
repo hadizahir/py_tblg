@@ -63,3 +63,20 @@ def edge_region_mask(XY, origin, T1, T2, n_mult, d_edge):
         d = np.linalg.norm(XY - proj, axis=1)
         dmin = np.minimum(dmin, d)
     return dmin <= d_edge
+
+
+
+def theta_comm_deg_from_mr(m: int, r: int) -> float:
+    """
+    Commensurate twist angle for (m,r):
+      cos θ = (3m^2 + 3mr + r^2/2) / (3m^2 + 3mr + r^2)
+    Returns θ in degrees.
+    """
+    import numpy as np
+    num = 3*m*m + 3*m*r + 0.5*r*r
+    den = 3*m*m + 3*m*r + r*r
+    c = float(num / den)
+    c = max(-1.0, min(1.0, c))
+    print(float(np.degrees(np.arccos(c))))
+    return float(np.degrees(np.arccos(c)))
+

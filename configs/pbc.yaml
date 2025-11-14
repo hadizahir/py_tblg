@@ -1,0 +1,52 @@
+# ======================================================================
+# PBC configuration for py_tbl
+# Clean commensurate supercell (periodic boundary conditions, no edges)
+# Used by: python -m py_tbl.run_pbc --config py_tbl/configs/pbc.yaml
+# ======================================================================
+
+paths:
+  # separate directory so PBC results don’t overwrite OBC data
+  save_dir: ./bands_pbc
+
+build:
+  # ------------------------------------------------------------------
+  # Moiré geometry: choose commensurate (m, r) pair
+  # theta_target_deg is ignored — run_pbc.py computes θ_comm(m,r)
+  # ------------------------------------------------------------------
+  m: 126
+  r: 7
+  theta_target_deg: 1.79       # only informational
+  hp_values: [0.90]            # interlayer cutoff (in units of acc)
+  n_mult_list: [1]             # ignored under PBC (always one supercell)
+
+tb:
+  # ------------------------------------------------------------------
+  # Tight-binding parameters
+  # ------------------------------------------------------------------
+  acc: 1.42                    # intralayer carbon–carbon bond length [Å]
+  dperp: 3.35                  # interlayer spacing [Å]
+  t: 2.79                      # intralayer hopping [eV]
+  tp: 0.35                # interlayer hopping [eV]
+  E_in_t: true                 # energy units expressed in t
+  registration: AB             # top-layer registration ("AA" or "AB")
+  interlayer_mode: baseline    # "baseline" or "stronger" SK decay
+
+window:
+  # ------------------------------------------------------------------
+  # Energy window and solver settings
+  # ------------------------------------------------------------------
+  E_window: [-0.1, 0.1]        # energy range around neutrality [in t units]
+  sigmas: [-0.08,-0.03,0,0.03,0.08]    # Gaussian smoothing widths for DOS (if used)
+  k_per_slice: 100               # unused in PBC run
+  n_states_target: 500         # target number of eigenstates
+
+
+
+# ----------------------------------------------------------------------
+# Typical commensurate sequence for reference:
+#   (m,r) = (6,1)  → θ ≈ 3.89°
+#   (m,r) = (9,1)  → θ ≈ 2.65°
+#   (m,r) = (12,1) → θ ≈ 2.13°
+#   (m,r) = (18,1) → θ ≈ 1.79°
+#   (m,r) = (27,1) → θ ≈ 1.19°
+# ----------------------------------------------------------------------

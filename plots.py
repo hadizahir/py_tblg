@@ -156,3 +156,89 @@ def batch_save_wavefunction_3d_surface_html(npz_path, states=None,
             outs.append(out_html)
             print(f"[saved 3D surface] {out_html}")
     return outs
+
+
+
+
+
+
+
+def plot_pbc_lattice(XY, N1, title="", savepath=None, show=False):
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    XY = np.asarray(XY, float)
+    N = XY.shape[0]
+
+    # --- automatic point size ---
+    scale = np.sqrt(N / 1000)
+    s = 1 / scale
+    #s = max(s, 1.0)
+
+    bot = XY[:N1]
+    top = XY[N1:]
+
+    fig, ax = plt.subplots(figsize=(25, 25))
+
+    ax.scatter(bot[:, 0], bot[:, 1], s=s, label="bottom", alpha=0.8)
+    ax.scatter(top[:, 0], top[:, 1], s=s, marker="x", label="top", alpha=0.8)
+
+    ax.set_aspect("equal", "box")
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.set_title(title)
+    ax.legend(loc="best", fontsize=8)
+
+    if savepath is not None:
+        fig.savefig(savepath, dpi=300, bbox_inches="tight")
+    if show:
+        plt.show()
+
+    plt.close(fig)
+
+def plot_pbc_wavefunction_layers(XY, N1, psi, title="", savepath=None, show=False):
+    import numpy as np
+    import matplotlib.pyplot as plt
+
+    XY = np.asarray(XY, float)
+    psi = np.asarray(psi)
+    N = XY.shape[0]
+
+    # automatic point size scaling
+    scale = np.sqrt(N / 1000)
+    s = 1 / scale
+    #s = max(s, 1.0)
+
+    dens = np.abs(psi)**2
+    dens_bot = dens[:N1]
+    dens_top = dens[N1:]
+
+    XY_bot = XY[:N1]
+    XY_top = XY[N1:]
+
+    vmin = 0.0
+    vmax = dens.max() if dens.max() > 0 else 1.0
+
+    fig, axes = plt.subplots(1, 2, figsize=(50, 25), sharex=True, sharey=True)
+
+    axL, axR = axes
+
+    scL = axL.scatter(XY_bot[:, 0], XY_bot[:, 1],
+                      c=dens_bot, s=s, cmap="viridis", vmin=vmin, vmax=vmax)
+    axL.set_title("bottom layer")
+    axL.set_aspect("equal", "box")
+
+    scR = axR.scatter(XY_top[:, 0], XY_top[:, 1],
+                      c=dens_top, s=s, cmap="viridis", vmin=vmin, vmax=vmax)
+    axR.set_title("top layer")
+    axR.set_aspect("equal", "box")
+
+    fig.suptitle(title)
+    fig.colorbar(scR, ax=axes.ravel().tolist(), shrink=0.85)
+
+    if savepath is not None:
+        fig.savefig(savepath, dpi=300, bbox_inches="tight")
+    if show:
+        plt.show()
+
+    plt.close(fig)
