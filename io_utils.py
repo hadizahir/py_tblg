@@ -7,7 +7,9 @@ Created on Sat Nov  8 19:55:38 2025
 
 import os, json, yaml, pandas as pd
 from .config import Config
-
+from .geometry import theta_comm_deg_from_mr
+import numpy as np
+import scipy.sparse as ss
 def ensure_dir(path: str):
     os.makedirs(path, exist_ok=True); return path
 
@@ -176,3 +178,83 @@ def save_interlayer_hoppings_csv(
     print(f"[saved interlayer hoppings] {out_csv} ({len(df)} entries)")
 
     return out_csv
+
+
+
+def build_interlayer_adjacency_from_csv(
+    config_path: str = "py_tbl/configs/pbc.yaml",
+    weighted: bool = False,
+):
+    """
+    Read the saved interlayer_hoppings_{tag}.csv from cfg.paths.save_dir,
+    build the interlayer adjacency matrix, and save it as a sparse .npz file.
+
+    Parameters
+    ----------
+    config_path : str
+        Path to pbc.yaml (or any config with build.m, build.r, build.hp_values, paths.save_dir).
+    weighted : bool
+        If False: adjacency A[i,j] = 1 for each interlayer link.
+        If True : adjacency A[i,j] = |t_perp(i,j)| (symmetric).
+
+    Returns
+    -------
+    A : scipy.sparse.csr_matrix
+        Interlayer adjacency matrix (N_sites x N_sites).
+    out_path : str
+        File path where the adjacency matrix was saved (.npz).
+    """
+
+    # --- load config and reconstruct tag ---
+    cfg: Config = load_config_yaml(config_path)
+    save_dir = ensure_dir(cfg.paths.save_dir)
+
+    m  = cfg.build.m
+    r  = cfg.build.r
+    hp = cfg.build.hp_values[0]
+    theta_comm = theta_comm_deg_from_mr(m, r)
+
+    tag = f"r{r:02d}_m{m:02d}_theta{theta_comm:.2f}_hp{hp:.2f}_PBC"
+
+    csv_path = os.path.join(save_dir, f"interlayer_hoppings_ij_tag_{tag}.csv")
+    if not os.path.isfile(csv_path):
+        raise FileNotFoundError(f"interlayer hoppings CSV not found: {csv_path}")
+
+    print(f"[adjacency] reading interlayer hoppings from {csv_path}")
+
+    df = pd.read_csv(csv_path)
+
+    # expect integer indices
+    for col in ("i_bottom", "i_top", "t_perp"):
+        if col not in df.columns:
+            raise ValueError(
+                f"Column '{col}' not found in {csv_path}. "
+                f"Available columns: {list(df.columns)}"
+            )
+
+    i_b = df["i_bottom"].to_numpy(dtype=int)
+    i_t = df["i_top"].to_numpy(dtype=int)
+    t   = df["t_perp"].to_numpy(dtype=float)
+
+    # infer total number of sites
+    N_sites = int(max(i_b.max(), i_t.max()) + 1)
+
+    if weighted:
+        w = np.abs(t)
+    else:
+        w = np.ones_like(t, dtype=float)
+
+    # build symmetric adjacency
+    rows = np.concatenate([i_b, i_t])
+    cols = np.concatenate([i_t, i_b])
+    vals = np.concatenate([w,   w   ])
+
+    A = ss.coo_matrix((vals, (rows, cols)), shape=(N_sites, N_sites)).tocsr()
+
+    out_path = os.path.join(save_dir, f"interlayer_adjacency_{tag}.npz")
+    ss.save_npz(out_path, A)
+
+    print(f"[adjacency] built interlayer adjacency (N={N_sites}) and saved to {out_path}")
+
+    return A, out_path
+

@@ -21,8 +21,8 @@ build:
   n_mult_list: [1]             # ignored under PBC (always one supercell)
     # Primitive approximants near 1.8°, sorted by system size
   approximants:
-  #- {m: 18,  r: 1}
-  # {m: 54,  r: 3}
+  - {m: 18,  r: 1}
+  - {m: 54,  r: 3}
   - {m: 71,  r: 4}
   - {m: 89,  r: 5}
   - {m: 107, r: 6}
