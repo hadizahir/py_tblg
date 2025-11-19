@@ -458,21 +458,27 @@ def build_pbc_H_gamma_from_kwant(
     print(f"[PBC/kwant] (m,r)=({m},{r}), θ={theta*180/pi:.2f}°, expected N={N_moire}")
 
     # -------------------- seed ranges --------------------
-    def seed_ranges_from_U(Umat, margin=4):
-        Umat = np.asarray(Umat, float)
-        c0 = np.array([0.0, 0.0])
-        c1 = Umat[:, 0]
-        c2 = Umat[:, 1]
-        c3 = c1 + c2
-        corners = np.stack([c0, c1, c2, c3], axis=0)
-        i_min = int(np.floor(np.min(corners[:, 0])) - margin)
-        i_max = int(np.ceil (np.max(corners[:, 0])) + margin)
-        j_min = int(np.floor(np.min(corners[:, 1])) - margin)
-        j_max = int(np.ceil (np.max(corners[:, 1])) + margin)
-        return (i_min, i_max), (j_min, j_max)
+# --- NEW: per-layer seed ranges from geometry, not from U ---
+    def seed_ranges_layer(a1, a2, T1, T2, margin=4):
+        """
+        Find index ranges (i,j) in the (a1,a2) basis that surely cover
+        the rhombus spanned by T1,T2 (with n_mult=1), padded by `margin`.
+        """
+        M = np.linalg.solve(np.column_stack([a1, a2]),
+                            np.column_stack([T1, T2]))
+        # corners in (i,j) index space
+        corners = np.array([
+            [0.0, 0.0],
+            M[:, 0],
+            M[:, 1],
+            M[:, 0] + M[:, 1],
+        ])
+        i_min, j_min = np.floor(corners.min(0) - margin).astype(int)
+        i_max, j_max = np.ceil (corners.max(0) + margin).astype(int)
+        return (i_min, i_max+1), (j_min, j_max+1)  # half-open ranges
 
-    (RANGE_BOT_M, RANGE_BOT_N) = seed_ranges_from_U(U, margin=4)
-    (RANGE_TOP_M, RANGE_TOP_N) = seed_ranges_from_U(U, margin=4)
+    (RANGE_BOT_M, RANGE_BOT_N) = seed_ranges_layer(a1_b, a2_b, T1, T2, margin=4)
+    (RANGE_TOP_M, RANGE_TOP_N) = seed_ranges_layer(a1_t, a2_t, T1, T2, margin=4)
 
     print("[PBC/kwant] auto-seed bottom M,N =", RANGE_BOT_M, RANGE_BOT_N)
     print("[PBC/kwant] auto-seed top    M,N =", RANGE_TOP_M, RANGE_TOP_N)

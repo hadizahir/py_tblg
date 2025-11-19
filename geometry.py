@@ -41,7 +41,6 @@ def rhombus_corners(origin, T1, T2, n_mult):
     P3 = origin + n_mult * (T1 + T2)
     return P0, P1, P3, P2
 
-
 def edge_region_mask(XY, origin, T1, T2, n_mult, d_edge):
     """
     Identify atoms that lie within 'd_edge' distance from any of the four
@@ -63,8 +62,6 @@ def edge_region_mask(XY, origin, T1, T2, n_mult, d_edge):
         d = np.linalg.norm(XY - proj, axis=1)
         dmin = np.minimum(dmin, d)
     return dmin <= d_edge
-
-
 
 def theta_comm_deg_from_mr(m: int, r: int) -> float:
     """

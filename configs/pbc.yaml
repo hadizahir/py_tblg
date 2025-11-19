@@ -13,11 +13,38 @@ build:
   # Moiré geometry: choose commensurate (m, r) pair
   # theta_target_deg is ignored — run_pbc.py computes θ_comm(m,r)
   # ------------------------------------------------------------------
-  m: 126
-  r: 7
+  # Fallback single (m,r) if you want to run just one:
+  m: 18
+  r: 1
   theta_target_deg: 1.79       # only informational
   hp_values: [0.90]            # interlayer cutoff (in units of acc)
   n_mult_list: [1]             # ignored under PBC (always one supercell)
+    # Primitive approximants near 1.8°, sorted by system size
+  approximants:
+  #- {m: 18,  r: 1}
+  # {m: 54,  r: 3}
+  - {m: 71,  r: 4}
+  - {m: 89,  r: 5}
+  - {m: 107, r: 6}
+  - {m: 125, r: 7}
+  - {m: 143, r: 8}
+  - {m: 161,  r: 9}
+  - {m: 178,  r: 10}
+  - {m: 179,  r: 10}
+  - {m: 196,  r: 11}
+  - {m: 197,  r: 11}
+  - {m: 214,  r: 12}
+  - {m: 232,  r: 13}
+  - {m: 233,  r: 13}
+  - {m: 250,  r: 14}
+  - {m: 251,  r: 14}
+  - {m: 267,  r: 15}
+  - {m: 268,  r: 15}
+  - {m: 269,  r: 15}
+  - {m: 285,  r: 16}
+  - {m: 286,  r: 16}
+
+
 
 tb:
   # ------------------------------------------------------------------
@@ -35,10 +62,10 @@ window:
   # ------------------------------------------------------------------
   # Energy window and solver settings
   # ------------------------------------------------------------------
-  E_window: [-0.1, 0.1]        # energy range around neutrality [in t units]
-  sigmas: [-0.08,-0.03,0,0.03,0.08]    # Gaussian smoothing widths for DOS (if used)
+  E_window: [-0.1, 0.0]        # energy range around neutrality [in t units]
+  sigmas: [-0.08,-0.06,-0.04,-0.02,-0.01,-0.0]    # Gaussian smoothing widths for DOS (if used)
   k_per_slice: 100               # unused in PBC run
-  n_states_target: 500         # target number of eigenstates
+  n_states_target: 1200         # target number of eigenstates
 
 
 
@@ -50,3 +77,7 @@ window:
 #   (m,r) = (18,1) → θ ≈ 1.79°
 #   (m,r) = (27,1) → θ ≈ 1.19°
 # ----------------------------------------------------------------------
+
+
+
+
