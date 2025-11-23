@@ -31,7 +31,7 @@ The goal is to provide a flexible research tool for exploring **spectral and reg
 
 The following diagram illustrates the modular architecture of **py_tblg**:
 
-![Architectural diagram](docs/architecture.png)
+![Architectural diagram](Designer.png)
 
 ### Layers:
 1. **Geometry & Lattice**: `geometry.py`, `lattices.py`  
