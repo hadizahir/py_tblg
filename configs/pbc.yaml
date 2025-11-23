@@ -17,7 +17,7 @@ build:
   m: 18
   r: 1
   theta_target_deg: 1.79       # only informational
-  hp_values: [0.90]            # interlayer cutoff (in units of acc)
+  hp_values: [1.5]            # interlayer cutoff (in units of acc)
   n_mult_list: [1]             # ignored under PBC (always one supercell)
     # Primitive approximants near 1.8°, sorted by system size
   approximants:
