@@ -2,26 +2,9 @@
 """
 kwant_bands.py — bandstructure for commensurate tBLG using kwant.
 
-This file contains:
-
-  * compute_tblg_bands_kwant(...)  – your full kwant bandstructure builder
-  * build_pbc_H_gamma_from_kwant(...) – Γ-point PBC Hamiltonian + geometry
-  * plot_pbc_lattice_from_H(...)  – simple lattice plot (bottom vs top)
-  * main() – CLI with --plot-lattice for visual inspection
+This is a functional refactor of your standalone kwant script,
+reusing helpers from the py_tbl package where possible.
 """
-
-import argparse
-import numpy as np
-import scipy.sparse as ss
-import matplotlib.pyplot as plt
-
-from .config import Config
-from .io_utils import load_config_yaml
-
-
-# ======================================================================
-# Your original compute_tblg_bands_kwant (unchanged)
-# ======================================================================
 
 def compute_tblg_bands_kwant(
     m,
@@ -391,9 +374,7 @@ def compute_tblg_bands_kwant(
     return KPATH, E_all, kept_sites
 
 
-# ======================================================================
-# Your build_pbc_H_gamma_from_kwant (unchanged, with new seed_ranges_layer)
-# ======================================================================
+# kwant_bands.py
 
 def build_pbc_H_gamma_from_kwant(
     m,
@@ -476,7 +457,7 @@ def build_pbc_H_gamma_from_kwant(
     print(f"[PBC/kwant] (m,r)=({m},{r}), θ={theta*180/pi:.2f}°, expected N={N_moire}")
 
     # -------------------- seed ranges --------------------
-    # --- NEW: per-layer seed ranges from geometry, not from U ---
+# --- NEW: per-layer seed ranges from geometry, not from U ---
     def seed_ranges_layer(a1, a2, T1, T2, margin=4):
         """
         Find index ranges (i,j) in the (a1,a2) basis that surely cover
@@ -649,7 +630,9 @@ def build_pbc_H_gamma_from_kwant(
     if tp != 0.0 and r_xy_cut > 0.0:
         add_interlayer_tags(kept_sites, tagged_hops, T1_loc, T2_loc, r_xy_cut)
 
+    # -------------------- build H(k=0) --------------------
     # -------------------- build sparse H(k=0) directly --------------------
+
     N = len(kept_sites)
 
     rows = []
@@ -677,164 +660,3 @@ def build_pbc_H_gamma_from_kwant(
 
     return H_sparse, XY, N1
 
-
-# ======================================================================
-# NEW: Lattice plotting helper
-# ======================================================================
-
-def plot_pbc_lattice_from_H(
-    XY: np.ndarray,
-    N1: int,
-    H: ss.csr_matrix | None = None,
-    show_bonds: bool = True,
-    max_bonds: int | None = 8000,
-):
-    """
-    Simple matplotlib plot of the PBC lattice.
-
-    Parameters
-    ----------
-    XY : (N,2) array
-        Positions of all sites; bottom first, then top.
-    N1 : int
-        Number of bottom-layer sites.
-    H : csr_matrix or None
-        If provided and show_bonds=True, draw intralayer bonds.
-    show_bonds : bool
-        Whether to draw bonds (using nonzero entries of H).
-    max_bonds : int or None
-        Max number of bonds to draw (to avoid overplotting).
-    """
-    fig, ax = plt.subplots(figsize=(6, 6))
-
-    XY_b = XY[:N1]
-    XY_t = XY[N1:]
-
-    ax.scatter(
-        XY_b[:, 0], XY_b[:, 1],
-        s=6, alpha=0.9, label="bottom", marker="o"
-    )
-    ax.scatter(
-        XY_t[:, 0], XY_t[:, 1],
-        s=6, alpha=0.9, label="top", marker="^"
-    )
-
-    if H is not None and show_bonds:
-        H = H.tocsr()
-        rows, cols = H.nonzero()
-        count = 0
-        for i, j in zip(rows, cols):
-            if i >= j:
-                continue  # avoid double plotting
-            # only intralayer bonds
-            bottom_pair = (i < N1 and j < N1)
-            top_pair = (i >= N1 and j >= N1)
-            if not (bottom_pair or top_pair):
-                continue
-
-            x1, y1 = XY[i]
-            x2, y2 = XY[j]
-            ax.plot(
-                [x1, x2], [y1, y2],
-                linewidth=0.3,
-                alpha=0.3,
-                color="0.3",
-            )
-            count += 1
-            if max_bonds is not None and count >= max_bonds:
-                break
-
-    ax.set_aspect("equal", adjustable="datalim")
-    ax.set_xlabel("x (Å)")
-    ax.set_ylabel("y (Å)")
-    ax.legend()
-    ax.set_title("PBC tBLG lattice (Γ cell)")
-    fig.tight_layout()
-    plt.show()
-
-
-# ======================================================================
-# CLI: --plot-lattice
-# ======================================================================
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="tBLG kwant bands & PBC lattice inspection."
-    )
-    parser.add_argument(
-        "--config",
-        type=str,
-        required=True,
-        help="Path to YAML config (same style as run_pbc.py).",
-    )
-    parser.add_argument(
-        "--plot-lattice",
-        action="store_true",
-        help="Plot PBC lattice (sites + intralayer bonds) and exit.",
-    )
-    parser.add_argument(
-        "--no-bonds",
-        action="store_true",
-        help="When plotting, do not draw bonds (sites only).",
-    )
-
-    args = parser.parse_args()
-    cfg: Config = load_config_yaml(args.config)
-
-    tb = cfg.tb
-    build_cfg = cfg.build
-
-    acc = tb.acc
-    dperp = tb.dperp
-    t = tb.t
-    tp = tb.tp
-    E_in_t = tb.E_in_t
-    interlayer_mode = tb.interlayer_mode
-    registration = tb.registration
-
-    # Use build.m, build.r and first hp value from config (like run_pbc)
-    m = int(build_cfg.m)
-    r = int(build_cfg.r)
-    hp_values = getattr(build_cfg, "hp_values", [0.9])
-    hp = float(hp_values[0])
-
-    # Always build H,XY,N1 once
-    H, XY, N1 = build_pbc_H_gamma_from_kwant(
-        m=m,
-        r=r,
-        hp=hp,
-        acc=acc,
-        dperp=dperp,
-        t=t,
-        tp=tp,
-        E_in_t=E_in_t,
-        interlayer_mode=interlayer_mode,
-        registration=registration,
-    )
-
-    if args.plot_lattice:
-        plot_pbc_lattice_from_H(
-            XY=XY,
-            N1=N1,
-            H=None if args.no_bonds else H,
-            show_bonds=not args.no_bonds,
-        )
-        return
-
-    # If not plotting, just print a quick diagnostic
-    row_sums = np.abs(H).sum(axis=1).A.ravel()
-    deg = (H != 0).sum(axis=1).A.ravel()
-
-    print("\n[kwant_bands] Γ-point Hamiltonian summary")
-    print("  N_sites   =", H.shape[0])
-    print("  N_bottom  =", N1)
-    print("  N_top     =", H.shape[0] - N1)
-    print(f"  min row_sum = {row_sums.min():.6e}")
-    print(f"  max row_sum = {row_sums.max():.6e}")
-    print(f"  min degree  = {deg.min():.0f}")
-    print(f"  max degree  = {deg.max():.0f}")
-    print("  (use --plot-lattice to visually inspect the geometry.)")
-
-
-if __name__ == "__main__":
-    main()

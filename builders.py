@@ -409,8 +409,6 @@ def build_approximant_H_sparse_pbc_kwant(
 
     return H_sparse, XY, N1
 
-
-
 def tperp_SK(r_xy, acc, dperp, t, tp, E_in_t, QSIGMA, QPI):
     tp_eff = tp/t if E_in_t else tp
     t_eff  = 1.0 if E_in_t else t
@@ -420,7 +418,6 @@ def tperp_SK(r_xy, acc, dperp, t, tp, E_in_t, QSIGMA, QPI):
     VPPsigma = tp_eff*np.exp(QSIGMA*(1.0 - rp/dperp))
     VPPpi    = -t_eff*np.exp(QPI*(1.0 - rp/acc))
     return float(VPPsigma*cos2w + VPPpi*sin2w)
-
 
 def build_flake_H_sparse(n_mult, a1_b, a2_b, A_b, B_b, a1_t, a2_t, A_t, B_t,
                          T1, T2, acc, dperp, t, tp, r_xy_cut, t_intra, QSIGMA, QPI, E_in_t):

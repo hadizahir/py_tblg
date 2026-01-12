@@ -21,7 +21,7 @@ build:
   n_mult_list: [1]             # ignored under PBC (always one supercell)
     # Primitive approximants near 1.8°, sorted by system size
   approximants:
-  - {m: 18,  r: 1}
+  #- {m: 18,  r: 1}
   - {m: 54,  r: 3}
   - {m: 71,  r: 4}
   - {m: 89,  r: 5}
@@ -67,6 +67,12 @@ window:
   k_per_slice: 100               # unused in PBC run
   n_states_target: 1200         # target number of eigenstates
 
+  # ------------------------------------------------------------------
+  # Extra knobs used by run_pbc_conductance.py
+  # ------------------------------------------------------------------
+  E_center: -0.5              # Fermi energy where G(E_F) is evaluated (in t units)
+  mu_lead: 0                # onsite shift in leads so they are metallic at E_F
+
 
 
 # ----------------------------------------------------------------------
@@ -77,7 +83,3 @@ window:
 #   (m,r) = (18,1) → θ ≈ 1.79°
 #   (m,r) = (27,1) → θ ≈ 1.19°
 # ----------------------------------------------------------------------
-
-
-
-
